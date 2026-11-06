@@ -5,52 +5,119 @@ using namespace vintage;
 namespace
 {
 juce::String u8 (const char* t) { return juce::String (juce::CharPointer_UTF8 (t)); }
+
+const juce::Colour lacquer   { 0xff5f7487 };   // blaugrauer Hammerschlaglack
+const juce::Colour silk      { 0xfff2eee4 };   // weißer Siebdruck
+const juce::Colour silkDim   { 0xc8f2eee4 };
 }
 
+//==============================================================================
+void RackLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos,
+                                        float startAngle, float endAngle, juce::Slider& slider)
+{
+    const auto b = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
+    const auto c = b.getCentre();
+    const float R = juce::jmin (b.getWidth(), b.getHeight()) * 0.5f;
+    const float knobR = R * 0.62f;
+    const float angle = startAngle + pos * (endAngle - startAngle);
+
+    // Skala im Siebdruck
+    const auto steps = juce::StringArray::fromTokens (slider.getProperties()["stepLabels"].toString(), "|", "");
+    g.setColour (silk);
+    if (steps.size() > 1)
+    {
+        for (int i = 0; i < steps.size(); ++i)
+        {
+            const float a = startAngle + (float) i / (float) (steps.size() - 1) * (endAngle - startAngle);
+            const auto p1 = c.getPointOnCircumference (knobR + 4.0f, a), p2 = c.getPointOnCircumference (knobR + 11.0f, a);
+            g.drawLine ({ p1, p2 }, 1.6f);
+            if (steps[i].isNotEmpty())
+            {
+                g.setFont (labelFont (steps[i].length() > 3 ? 11.0f : 13.0f, 0.05f));
+                const auto tp = c.getPointOnCircumference (knobR + (steps[i].length() > 3 ? 30.0f : 23.0f), a);
+                g.drawText (steps[i], juce::Rectangle<float> (56.0f, 16.0f).withCentre (tp), juce::Justification::centred);
+            }
+        }
+    }
+    else
+    {
+        for (int i = 0; i <= 20; ++i)
+        {
+            const float a = startAngle + (float) i / 20.0f * (endAngle - startAngle);
+            const bool major = i % 2 == 0;
+            g.drawLine ({ c.getPointOnCircumference (knobR + 4.0f, a), c.getPointOnCircumference (knobR + (major ? 11.0f : 7.0f), a) }, major ? 1.6f : 1.0f);
+            if (major)
+            {
+                g.setFont (labelFont (12.0f, 0.03f));
+                g.drawText (juce::String (i / 2), juce::Rectangle<float> (24.0f, 14.0f).withCentre (c.getPointOnCircumference (knobR + 21.0f, a)), juce::Justification::centred);
+            }
+        }
+    }
+
+    // Schatten
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c.translated (2.5f, 4.0f)));
+    // Rock (geriffelt)
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3a3836), c.x, c.y - knobR, juce::Colour (0xff0c0b0a), c.x, c.y + knobR, false));
+    g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c));
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    for (int k = 0; k < 48; ++k)
+    {
+        const float a = (float) k / 48.0f * juce::MathConstants<float>::twoPi;
+        g.drawLine ({ c.getPointOnCircumference (knobR * 0.86f, a), c.getPointOnCircumference (knobR - 0.5f, a) }, 1.2f);
+    }
+    // Kappe
+    const float capR = knobR * 0.74f;
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff4a4744), c.x - capR * 0.5f, c.y - capR, juce::Colour (0xff161514), c.x + capR * 0.4f, c.y + capR, false));
+    g.fillEllipse (juce::Rectangle<float> (capR * 2.0f, capR * 2.0f).withCentre (c));
+    g.setColour (juce::Colours::white.withAlpha (0.10f));
+    g.fillEllipse (juce::Rectangle<float> (capR * 1.1f, capR * 0.55f).withCentre (c.translated (-capR * 0.2f, -capR * 0.5f)));
+    g.setColour (juce::Colours::black.withAlpha (0.7f));
+    g.drawEllipse (juce::Rectangle<float> (capR * 2.0f, capR * 2.0f).withCentre (c), 1.0f);
+    // weiße Zeigerlinie über Kappe und Rock
+    g.setColour (juce::Colour (0xfff5f1e6));
+    g.drawLine ({ c.getPointOnCircumference (capR * 0.25f, angle), c.getPointOnCircumference (knobR - 1.5f, angle) }, 3.0f);
+}
+
+//==============================================================================
 PultAudioProcessorEditor::PultAudioProcessorEditor (PultAudioProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
     setLookAndFeel (&lnf);
 
-    // Reihenfolge = Position auf der Frontplatte
-    addKnob ("lf",     "FREQUENZ (HZ)",  true, "20|30|60|100");
-    addKnob ("lboost", "ANHEBEN",        true);
-    addKnob ("latten", "ABSENKEN",       true);
-    addKnob ("hf",     "FREQUENZ (KHZ)", true, "3|4|5|8|10|12|16");
-    addKnob ("bw",     "BANDBREITE",     true, "SCHMAL||||BREIT");
-    addKnob ("hboost", "ANHEBEN",        true);
-    addKnob ("haf",    "FREQUENZ (KHZ)", true, "5|10|20");
-    addKnob ("hatten", "ABSENKEN",       true);
+    // Reihenfolge = Bedienfeld: Tiefen (oben Frequenz, unten Anheben/Absenken), Höhen, Höhen-Absenkung, Ausgang
+    addKnob ("lf",     "FREQUENZ (HZ)",   true, "20|30|60|100");
+    addKnob ("lboost", "ANHEBEN",         true);
+    addKnob ("latten", "ABSENKEN",        true);
+    addKnob ("hf",     "FREQUENZ (KHZ)",  true, "3|4|5|8|10|12|16");
+    addKnob ("bw",     "BANDBREITE",      true, "SCHMAL||||BREIT");
+    addKnob ("hboost", "ANHEBEN",         true);
+    addKnob ("haf",    "FREQUENZ (KHZ)",  true, "5|10|20");
+    addKnob ("hatten", "ABSENKEN",        true);
     addKnob ("tube",   u8 ("R\xc3\x96HRE"), false);
-    addKnob ("output", "AUSGANG",        false, u8 ("\xe2\x88\x92" "12|\xe2\x88\x92" "6|0|+6|+12"));
+    addKnob ("output", "PEGEL (DB)",      false, u8 ("\xe2\x88\x92" "12|\xe2\x88\x92" "6|0|+6|+12"));
     attachSet (0);
 
-    setupSwitch (onSwitch, "on", "AN", "AUS", lampRed);
-    modeSwitch.setButtonText ("x");
-    modeSwitch.getProperties().set ("onText", "M/S");
-    modeSwitch.getProperties().set ("offText", "STEREO");
-    modeSwitch.getProperties().set ("lamp", (int) lampAmber.getARGB());
-    addAndMakeVisible (modeSwitch);
-    // Modus ist ein Auswahl-Parameter (0/1) – als Schalter bedienen
+    setupToggle (onSwitch, "EIN", "AUS", lampRed);
+    onAttachment = std::make_unique<ButtonAttachment> (proc.apvts, "on", onSwitch);
+
+    setupToggle (modeSwitch, "M/S", "STEREO", lampAmber);
     modeSwitch.onClick = [this]
     {
         if (auto* prm = proc.apvts.getParameter ("mode"))
             prm->setValueNotifyingHost (modeSwitch.getToggleState() ? 1.0f : 0.0f);
     };
 
-    for (auto* b : { &midButton, &sideButton })
-    {
-        b->setClickingTogglesState (true);
-        b->setRadioGroupId (1);
-        addAndMakeVisible (*b);
-    }
-    midButton.setButtonText ("MITTE");
-    sideButton.setButtonText ("SEITE");
-    midButton.setToggleState (true, juce::dontSendNotification);
-    midButton.onClick  = [this] { if (midButton.getToggleState())  { editSet = 0; attachSet (0); } };
-    sideButton.onClick = [this] { if (sideButton.getToggleState()) { editSet = 1; attachSet (1); } };
+    setupToggle (editSwitch, "SEITE", "MITTE", lampAmber);
+    editSwitch.setEnabled (false);
+    editSwitch.setAlpha (0.4f);
+    editSwitch.onClick = [this] { editSet = editSwitch.getToggleState() ? 1 : 0; attachSet (editSet); repaint(); };
 
-    presetBox.getProperties().set ("plate", true);
+    setupToggle (curveSwitch, "ZEIGEN", "AUS", lampGreen);
+    curveVisible = (bool) proc.apvts.state.getProperty ("showCurve", false);
+    curveSwitch.setToggleState (curveVisible, juce::dontSendNotification);
+    curveSwitch.onClick = [this] { setCurveVisible (curveSwitch.getToggleState()); };
+
     for (int i = 0; i < proc.getNumPrograms(); ++i)
         presetBox.addItem (proc.getProgramName (i), i + 1);
     presetBox.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);
@@ -58,9 +125,10 @@ PultAudioProcessorEditor::PultAudioProcessorEditor (PultAudioProcessor& p)
     addAndMakeVisible (presetBox);
 
     curve.setInterceptsMouseClicks (false, false);
-    addAndMakeVisible (curve);
+    addChildComponent (curve);
 
-    setSize (1100, 680);
+    setSize (rackW, rackH + (curveVisible ? curveH : 0));
+    curve.setVisible (curveVisible);
     startTimerHz (30);
 }
 
@@ -76,13 +144,17 @@ PultAudioProcessorEditor::Knob& PultAudioProcessorEditor::addKnob (const juce::S
     k->name = name; k->baseID = baseID; k->perSet = perSet;
     k->slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     k->slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-    k->slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.2f, juce::MathConstants<float>::pi * 2.8f, true);
+    k->slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
     k->slider.setMouseDragSensitivity (steps.isNotEmpty() && ! steps.contains ("SCHMAL") ? 140 : 240);
     if (steps.isNotEmpty())
         k->slider.getProperties().set ("stepLabels", steps);
     addAndMakeVisible (k->slider);
     if (! perSet)
+    {
         k->attachment = std::make_unique<SliderAttachment> (proc.apvts, baseID, k->slider);
+        if (auto* rp = proc.apvts.getParameter (baseID))
+            k->slider.setDoubleClickReturnValue (true, rp->convertFrom0to1 (rp->getDefaultValue()));
+    }
     knobs.push_back (std::move (k));
     return *knobs.back();
 }
@@ -102,15 +174,22 @@ void PultAudioProcessorEditor::attachSet (int set)
     curve.repaint();
 }
 
-void PultAudioProcessorEditor::setupSwitch (juce::ToggleButton& b, const juce::String& paramID,
-                                           const juce::String& onText, const juce::String& offText, juce::Colour lamp)
+void PultAudioProcessorEditor::setupToggle (juce::ToggleButton& b, const juce::String& onText, const juce::String& offText, juce::Colour lamp)
 {
     b.setButtonText ("x");
     b.getProperties().set ("onText", onText);
     b.getProperties().set ("offText", offText);
     b.getProperties().set ("lamp", (int) lamp.getARGB());
+    b.setColour (juce::ToggleButton::textColourId, silk);
     addAndMakeVisible (b);
-    buttonAttachments.push_back (std::make_unique<ButtonAttachment> (proc.apvts, paramID, b));
+}
+
+void PultAudioProcessorEditor::setCurveVisible (bool v)
+{
+    curveVisible = v;
+    proc.apvts.state.setProperty ("showCurve", v, nullptr);
+    curve.setVisible (v);
+    setSize (rackW, rackH + (v ? curveH : 0));
 }
 
 void PultAudioProcessorEditor::timerCallback()
@@ -120,8 +199,9 @@ void PultAudioProcessorEditor::timerCallback()
     if (ms != shownMs)
     {
         shownMs = ms;
-        midButton.setVisible (ms); sideButton.setVisible (ms);
-        if (! ms && editSet != 0) { editSet = 0; midButton.setToggleState (true, juce::dontSendNotification); attachSet (0); }
+        editSwitch.setEnabled (ms);
+        editSwitch.setAlpha (ms ? 1.0f : 0.4f);
+        if (! ms && editSet != 0) { editSet = 0; editSwitch.setToggleState (false, juce::dontSendNotification); attachSet (0); }
         repaint();
     }
 
@@ -208,183 +288,185 @@ void PultAudioProcessorEditor::Curve::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-void PultAudioProcessorEditor::renderTextures()
+void PultAudioProcessorEditor::renderPanel()
 {
-    tolexImage = juce::Image (juce::Image::RGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), false);
+    // Hammerschlaglack: Grundfarbe, weiche Flecken, feines Korn
+    panelImage = juce::Image (juce::Image::ARGB, rackW, rackH, true);
+    juce::Graphics g (panelImage);
+    g.setGradientFill (juce::ColourGradient (lacquer.brighter (0.12f), 0, 0, lacquer.darker (0.18f), 0, (float) rackH, false));
+    g.fillRect (0, 0, rackW, rackH);
+    juce::Random rnd (11);
+    for (int i = 0; i < 9000; ++i)
     {
-        juce::Image::BitmapData data (tolexImage, juce::Image::BitmapData::writeOnly);
-        juce::Random rnd (7);
-        for (int y = 0; y < tolexImage.getHeight(); ++y)
-            for (int x = 0; x < tolexImage.getWidth(); ++x)
+        const float r = 1.5f + rnd.nextFloat() * 4.0f;
+        const float x = rnd.nextFloat() * rackW, y = rnd.nextFloat() * rackH;
+        g.setColour ((rnd.nextBool() ? juce::Colours::white : juce::Colours::black).withAlpha (0.012f + rnd.nextFloat() * 0.02f));
+        g.fillEllipse (x - r, y - r, 2 * r, 2 * r);
+    }
+    {
+        juce::Image::BitmapData data (panelImage, juce::Image::BitmapData::readWrite);
+        for (int y = 0; y < rackH; ++y)
+            for (int x = 0; x < rackW; ++x)
             {
-                const int weave = ((x + y) % 4 == 0 || (x - y + 4096) % 4 == 0) ? -5 : 0;
-                const int n = rnd.nextInt (13) - 6 + weave;
-                data.setPixelColour (x, y, juce::Colour ((juce::uint8) juce::jlimit (0, 255, 34 + n),
-                                                         (juce::uint8) juce::jlimit (0, 255, 28 + n),
-                                                         (juce::uint8) juce::jlimit (0, 255, 24 + n)));
+                auto c = data.getPixelColour (x, y);
+                const int n = rnd.nextInt (9) - 4;
+                data.setPixelColour (x, y, juce::Colour ((juce::uint8) juce::jlimit (0, 255, c.getRed() + n),
+                                                         (juce::uint8) juce::jlimit (0, 255, c.getGreen() + n),
+                                                         (juce::uint8) juce::jlimit (0, 255, c.getBlue() + n)));
             }
     }
-    if (faceplate.isEmpty())
-        return;
-    faceplateImage = juce::Image (juce::Image::ARGB, faceplate.getWidth(), faceplate.getHeight(), true);
-    juce::Graphics g (faceplateImage);
-    const auto r = faceplateImage.getBounds().toFloat();
-    g.setGradientFill (juce::ColourGradient (cream.brighter (0.06f), 0, 0, creamDark, 0, r.getHeight(), false));
-    g.fillRoundedRectangle (r, 6.0f);
-    juce::Random rnd (3);
-    for (int y = 0; y < faceplate.getHeight(); ++y)
-    {
-        g.setColour ((rnd.nextBool() ? juce::Colours::white : juce::Colour (0xff6b5534)).withAlpha (0.015f + rnd.nextFloat() * 0.035f));
-        g.drawHorizontalLine (y, 0.0f, r.getWidth());
-    }
-    g.setGradientFill (juce::ColourGradient (juce::Colours::transparentBlack, r.getCentreX(), r.getCentreY(),
-                                             juce::Colour (0x30694a1c), 0, 0, true));
-    g.fillRoundedRectangle (r, 6.0f);
-}
+    // Kanten: oben Licht, unten Schatten
+    g.setColour (juce::Colours::white.withAlpha (0.25f)); g.drawHorizontalLine (0, 0.0f, (float) rackW);
+    g.setColour (juce::Colours::black.withAlpha (0.45f)); g.drawHorizontalLine (rackH - 1, 0.0f, (float) rackW);
 
-void PultAudioProcessorEditor::drawEngraved (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r,
-                                            juce::Font f, juce::Justification j)
-{
-    g.setFont (f);
-    g.setColour (juce::Colours::white.withAlpha (0.55f));
-    g.drawFittedText (text, r.translated (0.0f, 1.0f).toNearestInt(), j, 2, 1.0f);
-    g.setColour (ink);
-    g.drawFittedText (text, r.toNearestInt(), j, 2, 1.0f);
+    // Rack-Ohren mit Langlöchern
+    for (float ex : { 0.0f, (float) rackW - 56.0f })
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.drawVerticalLine ((int) (ex < 1.0f ? 56.0f : ex), 0.0f, (float) rackH);
+        g.setColour (juce::Colours::white.withAlpha (0.12f));
+        g.drawVerticalLine ((int) (ex < 1.0f ? 57.0f : ex + 1.0f), 0.0f, (float) rackH);
+        for (float sy : { 44.0f, (float) rackH - 44.0f })
+        {
+            const auto slot = juce::Rectangle<float> (ex + 14.0f, sy - 8.0f, 28.0f, 16.0f);
+            g.setColour (juce::Colour (0xff141210));
+            g.fillRoundedRectangle (slot, 8.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.18f));
+            g.drawRoundedRectangle (slot.translated (0.0f, 1.0f), 8.0f, 1.0f);
+            VintageLookAndFeel::drawScrew (g, slot.getCentre().translated (ex < 1.0f ? 3.0f : -3.0f, 0.0f), 6.5f, sy * 0.01f + ex * 0.003f);
+        }
+    }
+
+    // Abschnitte im Siebdruck
+    const juce::String titles[] = { "TIEFEN", u8 ("H\xc3\x96HEN"), u8 ("H\xc3\x96HEN-ABSENKUNG"), u8 ("R\xc3\x96HRENSTUFE") };
+    for (size_t i = 0; i < 4; ++i)
+    {
+        const auto r = sections[i].toFloat();
+        g.setColour (silkDim);
+        juce::Path box; box.addRoundedRectangle (r, 5.0f);
+        g.strokePath (box, juce::PathStrokeType (1.2f));
+        g.setFont (lnf.labelFont (13.0f, 0.3f));
+        const float tw = (float) juce::GlyphArrangement::getStringWidthInt (lnf.labelFont (13.0f, 0.3f), titles[i]) + 20.0f;
+        const auto tr = juce::Rectangle<float> (tw, 16.0f).withCentre ({ r.getCentreX(), r.getY() });
+        g.setColour (lacquer.withAlpha (1.0f));
+        g.fillRect (tr);
+        g.setColour (silk);
+        g.drawText (titles[i], tr, juce::Justification::centred);
+    }
+
+    // Beschriftungen unter den Knöpfen
+    for (auto& k : knobs)
+    {
+        const auto sb = k->slider.getBounds().toFloat();
+        g.setColour (silk);
+        g.setFont (lnf.labelFont (13.0f, 0.18f));
+        g.drawText (k->name, juce::Rectangle<float> (sb.getX() - 30.0f, sb.getBottom() - 6.0f, sb.getWidth() + 60.0f, 18.0f), juce::Justification::centred);
+    }
+
+    // Typenschild
+    const auto np = nameplate.toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.4f));
+    g.fillRoundedRectangle (np.translated (1.5f, 2.5f), 4.0f);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a2522), 0, np.getY(), juce::Colour (0xff121010), 0, np.getBottom(), false));
+    g.fillRoundedRectangle (np, 4.0f);
+    g.setColour (gold.withAlpha (0.7f));
+    g.drawRoundedRectangle (np.reduced (3.0f), 3.0f, 1.0f);
+    g.setFont (lnf.scriptFont (34.0f));
+    g.setColour (logo);
+    g.drawText ("Klangbild", np.withTrimmedLeft (12.0f).withHeight (44.0f).translated (0.0f, 2.0f), juce::Justification::centredLeft);
+    g.setColour (gold);
+    g.setFont (lnf.labelFont (17.0f, 0.45f));
+    g.drawText ("PULT", np.withTrimmedLeft (16.0f).withTrimmedTop (44.0f).withHeight (20.0f), juce::Justification::centredLeft);
+    g.setColour (logo.withAlpha (0.6f));
+    g.setFont (lnf.labelFont (9.0f, 0.2f));
+    g.drawText ("PROGRAMM-ENTZERRER", np.withTrimmedLeft (16.0f).withTrimmedTop (66.0f).withHeight (14.0f), juce::Justification::centredLeft);
+
+    // Schalter-Beschriftungen
+    const juce::String tl[] = { "EQ", "MODUS", "BEARBEITEN", "KURVE" };
+    for (size_t i = 0; i < 4; ++i)
+    {
+        g.setColour (silk);
+        g.setFont (lnf.labelFont (11.0f, 0.22f));
+        g.drawText (tl[i], toggleLabels[i].toFloat(), juce::Justification::centredLeft);
+    }
+    g.setColour (silk);
+    g.setFont (lnf.labelFont (11.0f, 0.22f));
+    g.drawText ("PROGRAMM", presetBox.getBounds().toFloat().withY ((float) presetBox.getY() - 16.0f).withHeight (14.0f), juce::Justification::centredLeft);
+
+    // Typ-Gravur unten rechts
+    g.setColour (silkDim);
+    g.setFont (lnf.labelFont (10.0f, 0.3f));
+    g.drawText (u8 ("TYP KB-1A  \xc2\xb7  NR. 0612"), tagArea.toFloat(), juce::Justification::centredRight);
 }
 
 void PultAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.drawImageAt (tolexImage, 0, 0);
-
-    const auto scriptF = lnf.scriptFont (64.0f);
-    const auto logoArea = juce::Rectangle<float> (40.0f, 8.0f, 400.0f, 84.0f);
-    g.setFont (scriptF);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.drawText ("Klangbild", logoArea.translated (2.0f, 3.0f), juce::Justification::centredLeft);
-    g.setColour (logo);
-    g.drawText ("Klangbild", logoArea, juce::Justification::centredLeft);
-    const float sw = (float) juce::GlyphArrangement::getStringWidthInt (scriptF, "Klangbild");
-    g.setColour (gold);
-    g.setFont (lnf.labelFont (26.0f, 0.35f));
-    g.drawText ("PULT", juce::Rectangle<float> (logoArea.getX() + sw + 14.0f, logoArea.getY() + 30.0f, 140.0f, 40.0f), juce::Justification::centredLeft);
-    g.setColour (logo.withAlpha (0.55f));
-    g.setFont (lnf.labelFont (12.0f, 0.3f));
-    g.drawText (u8 ("PASSIVER R\xc3\x96HREN-EQ \xc2\xb7 STEREO \xc2\xb7 MITTE/SEITE"), juce::Rectangle<float> (44.0f, 90.0f, 460.0f, 16.0f), juce::Justification::centredLeft);
-
-    const auto pa = presetArea.toFloat();
-    g.setColour (logo.withAlpha (0.6f));
-    g.setFont (lnf.labelFont (10.0f, 0.3f));
-    g.drawText ("PROGRAMM", pa.withY (pa.getY() - 15.0f).withHeight (13.0f), juce::Justification::centredLeft);
-
-    // Rahmen um das Messprotokoll
-    const auto cb = curveBezel.toFloat();
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (cb.translated (2.0f, 3.0f), 10.0f);
-    g.setGradientFill (juce::ColourGradient (gold.brighter (0.25f), 0, cb.getY(), gold.darker (0.6f), 0, cb.getBottom(), false));
-    g.fillRoundedRectangle (cb, 10.0f);
-
-    // Frontplatte
-    const auto fp = faceplate.toFloat();
-    g.setColour (juce::Colours::black.withAlpha (0.6f));
-    g.fillRoundedRectangle (fp.expanded (4.0f).translated (0, 2.0f), 9.0f);
-    g.setGradientFill (juce::ColourGradient (gold.brighter (0.3f), 0, fp.getY(), gold.darker (0.6f), 0, fp.getBottom(), false));
-    g.fillRoundedRectangle (fp.expanded (3.0f), 8.0f);
-    g.drawImageAt (faceplateImage, faceplate.getX(), faceplate.getY());
-    g.setColour (juce::Colours::black.withAlpha (0.35f));
-    g.drawRoundedRectangle (fp, 6.0f, 1.0f);
-    for (auto [x, y, a] : { std::tuple { fp.getX() + 12.0f, fp.getY() + 12.0f, 0.4f }, std::tuple { fp.getRight() - 12.0f, fp.getY() + 12.0f, 1.3f },
-                            std::tuple { fp.getX() + 12.0f, fp.getBottom() - 12.0f, 2.2f }, std::tuple { fp.getRight() - 12.0f, fp.getBottom() - 12.0f, 0.9f } })
-        VintageLookAndFeel::drawScrew (g, { x, y }, 5.0f, a);
-
-    // Gruppen mit Überschrift und feinem Rahmen
-    const juce::String setName = shownMs ? (editSet == 0 ? u8 (" \xc2\xb7 MITTE") : u8 (" \xc2\xb7 SEITE")) : juce::String();
-    const std::pair<juce::Rectangle<int>, juce::String> groups[] = {
-        { groupLow,   "TIEFEN" + setName },
-        { groupHigh,  u8 ("H\xc3\x96HEN ANHEBEN") + setName },
-        { groupAtten, u8 ("H\xc3\x96HEN ABSENKEN") + setName },
-        { groupOut,   "AUSGANG" },
-    };
-    for (auto& [r, title] : groups)
+    if (curveVisible)
     {
-        const auto rf = r.toFloat();
-        g.setColour (ink.withAlpha (0.25f));
-        g.drawRoundedRectangle (rf, 6.0f, 1.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.35f));
-        g.drawRoundedRectangle (rf.translated (0.0f, 1.0f), 6.0f, 1.0f);
-        const auto tr = juce::Rectangle<float> (rf.getCentreX() - 120.0f, rf.getY() - 9.0f, 240.0f, 18.0f);
-        const float tw = (float) juce::GlyphArrangement::getStringWidthInt (lnf.labelFont (13.0f, 0.22f), title) + 24.0f;
-        g.setColour (cream);
-        g.fillRect (tr.withSizeKeepingCentre (tw, 14.0f));
-        drawEngraved (g, title, tr, lnf.labelFont (13.0f, 0.22f), juce::Justification::centred);
+        g.drawImageAt (tolexImage, 0, rackH);
+        const auto cb = curveBezel.toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillRoundedRectangle (cb.translated (2.0f, 3.0f), 8.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffb9bec3), 0, cb.getY(), juce::Colour (0xff6d7277), 0, cb.getBottom(), false));
+        g.fillRoundedRectangle (cb, 8.0f);
     }
+    g.drawImageAt (panelImage, 0, 0);
 
-    for (auto& k : knobs)
+    // Bearbeitungs-Hinweis im M/S-Modus
+    if (shownMs)
     {
-        const auto sb = k->slider.getBounds().toFloat();
-        drawEngraved (g, k->name, { sb.getX() - 20.0f, sb.getBottom() - 2.0f, sb.getWidth() + 40.0f, 18.0f },
-                      lnf.labelFont (13.0f, 0.14f), juce::Justification::centred);
+        g.setColour (lampAmber);
+        g.setFont (lnf.labelFont (12.0f, 0.25f));
+        const auto t = editSet == 0 ? juce::String ("EINSTELLUNG: MITTE") : juce::String ("EINSTELLUNG: SEITE");
+        g.drawText (t, juce::Rectangle<float> ((float) sections[0].getX(), (float) rackH - 26.0f, 400.0f, 16.0f), juce::Justification::centredLeft);
     }
-
-    const juce::String names[] = { "EQ", "MODUS", shownMs ? u8 ("BEARBEITEN") : juce::String() };
-    for (size_t i = 0; i < 3; ++i)
-        drawEngraved (g, names[i], switchLabels[i].toFloat(), lnf.labelFont (12.0f, 0.14f), juce::Justification::centred);
-
-    const auto tag = tagArea.toFloat();
-    g.setColour (ink.withAlpha (0.85f));
-    g.fillRoundedRectangle (tag, 3.0f);
-    g.setColour (gold);
-    g.setFont (lnf.labelFont (11.0f, 0.2f));
-    g.drawText ("MODELL KB-1A", tag, juce::Justification::centred);
 }
 
 void PultAudioProcessorEditor::resized()
 {
-    const int W = getWidth();
-    presetArea = { 44, 128, 330, 32 };
-    presetBox.setBounds (presetArea);
-    curveBezel = { W - 560, 14, 530, 166 };
-    curve.setBounds (curveBezel.reduced (7));
+    panel = { 56, 0, rackW - 112, rackH };
+    const int top = 30, bottom = rackH - 34;
+    sections[0] = { 76, top, 310, bottom - top };
+    sections[1] = { 398, top, 310, bottom - top };
+    sections[2] = { 720, top, 150, bottom - top };
+    sections[3] = { 882, top, 150, bottom - top };
 
-    faceplate = { 24, 196, W - 48, getHeight() - 196 - 20 };
-    const auto in = faceplate.reduced (26, 26);
+    const int topKnob = 150, botKnob = 140;
+    auto placeTop = [&] (int idx, int cx) { knobs[(size_t) idx]->slider.setBounds (cx - topKnob / 2, top + 20, topKnob, topKnob); };
+    auto placeBot = [&] (int idx, int cx) { knobs[(size_t) idx]->slider.setBounds (cx - botKnob / 2, top + 210, botKnob, botKnob); };
+    placeTop (0, sections[0].getCentreX());
+    placeBot (1, sections[0].getX() + 80); placeBot (2, sections[0].getRight() - 80);
+    placeTop (3, sections[1].getCentreX());
+    placeBot (4, sections[1].getX() + 80); placeBot (5, sections[1].getRight() - 80);
+    placeTop (6, sections[2].getCentreX()); placeBot (7, sections[2].getCentreX());
+    placeTop (8, sections[3].getCentreX()); placeBot (9, sections[3].getCentreX());
 
-    // obere Reihe: Tiefen (3) | Höhen anheben (3)
-    const int kw = 150, kh = 150;
-    const int halfW = in.getWidth() / 2;
-    groupLow  = { in.getX(), in.getY(), halfW - 10, kh + 40 };
-    groupHigh = { in.getX() + halfW + 10, in.getY(), halfW - 10, kh + 40 };
-    auto place3 = [&] (juce::Rectangle<int> grp, int first)
+    // rechte Spalte: Typenschild, Programm, Schalter
+    const int colX = 1046, colW = rackW - 56 - 14 - colX;
+    nameplate = { colX, top - 8, colW, 88 };
+    presetBox.setBounds (colX, top + 100, colW, 28);
+    juce::ToggleButton* tg[] = { &onSwitch, &modeSwitch, &editSwitch, &curveSwitch };
+    for (int i = 0; i < 4; ++i)
     {
-        const int gap = (grp.getWidth() - 3 * kw) / 4;
-        for (int i = 0; i < 3; ++i)
-            knobs[(size_t) (first + i)]->slider.setBounds (grp.getX() + gap + i * (kw + gap), grp.getY() + 14, kw, kh);
-    };
-    place3 (groupLow, 0);
-    place3 (groupHigh, 3);
-
-    // untere Reihe: Höhen absenken (2) | Ausgang: Röhre, Pegel (2) | Schalter
-    const int rowY = in.getY() + kh + 66;
-    const int rowH = in.getBottom() - rowY;
-    groupAtten = { in.getX(), rowY, 2 * kw + 60, rowH };
-    groupOut   = { groupAtten.getRight() + 20, rowY, 2 * kw + 60, rowH };
-    for (int i = 0; i < 2; ++i)
-    {
-        knobs[(size_t) (6 + i)]->slider.setBounds (groupAtten.getX() + 20 + i * (kw + 20), rowY + 14, kw, kh - 10);
-        knobs[(size_t) (8 + i)]->slider.setBounds (groupOut.getX() + 20 + i * (kw + 20), rowY + 14, kw, kh - 10);
+        const int y = top + 140 + i * 56;
+        toggleLabels[(size_t) i] = { colX, y, colW, 14 };
+        tg[i]->setBounds (colX - 4, y + 14, 140, 40);
     }
+    tagArea = { colX - 40, rackH - 28, colW + 40, 16 };
 
-    const int ctrlX = groupOut.getRight() + 20, ctrlW = in.getRight() - ctrlX;
-    const int colW = ctrlW / 2;
-    switchLabels[0] = { ctrlX, rowY + 6, colW, 16 };
-    onSwitch.setBounds (ctrlX + (colW - 120) / 2, rowY + 26, 120, 40);
-    switchLabels[1] = { ctrlX, rowY + 84, colW, 16 };
-    modeSwitch.setBounds (ctrlX + (colW - 120) / 2, rowY + 104, 120, 40);
-    switchLabels[2] = { ctrlX + colW, rowY + 6, colW, 16 };
-    midButton.setBounds (ctrlX + colW + (colW - 100) / 2, rowY + 28, 100, 32);
-    sideButton.setBounds (ctrlX + colW + (colW - 100) / 2, rowY + 68, 100, 32);
-    tagArea = { ctrlX + colW + (colW - 130) / 2, rowY + rowH - 36, 130, 24 };
-    dividerArea = {};
+    curveBezel = { 56, rackH + 14, rackW - 112, curveH - 28 };
+    curve.setBounds (curveBezel.reduced (8));
 
-    midButton.setVisible (shownMs); sideButton.setVisible (shownMs);
-    renderTextures();
+    tolexImage = juce::Image (juce::Image::RGB, rackW, curveH, false);
+    {
+        juce::Image::BitmapData data (tolexImage, juce::Image::BitmapData::writeOnly);
+        juce::Random rnd (7);
+        for (int y = 0; y < curveH; ++y)
+            for (int x = 0; x < rackW; ++x)
+            {
+                const int n = rnd.nextInt (11) - 5;
+                data.setPixelColour (x, y, juce::Colour ((juce::uint8) (24 + n), (juce::uint8) (22 + n), (juce::uint8) (21 + n)));
+            }
+    }
+    renderPanel();
 }

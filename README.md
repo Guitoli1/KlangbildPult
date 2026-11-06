@@ -15,9 +15,11 @@ Standalone), gebaut mit [JUCE](https://juce.com).
 | **Höhen anheben** | Frequenz 3 · 4 · 5 · 8 · 10 · 12 · 16 kHz – **Bandbreite** (schmal … breit) – **Anheben** (bis +16 dB) |
 | **Höhen absenken** | Frequenz 5 · 10 · 20 kHz – **Absenken** (sanftes Kuhschwanz-Filter, bis −16 dB) |
 | **Ausgang** | **Röhre** (Wärme, vor allem geradzahlige Obertöne, 2-fach überabgetastet) – **Ausgang** ±12 dB |
-| **Schalter** | **EQ An/Aus** (zeitrichtiger Bypass) – **Modus Stereo / M/S** – **Bearbeiten Mitte / Seite** |
+| **Schalter** | **EQ Ein/Aus** (zeitrichtiger Bypass) – **Modus Stereo / M/S** – **Bearbeiten Mitte / Seite** – **Kurve zeigen** |
 
-Oben zeigt das **Messprotokoll** den Frequenzgang der Einstellung (im M/S-Modus Mitte blau, Seite rot).
+Die Oberfläche ist einem 19-Zoll-Studiogerät nachempfunden: blaugrauer Hammerschlaglack, weißer Siebdruck,
+schwarze Zeigerknöpfe, Rack-Ohren. Mit **Kurve → Zeigen** klappt unter dem Gerät ein **Messprotokoll** mit dem
+Frequenzgang auf (im M/S-Modus Mitte blau, Seite rot).
 
 ### Der Tiefen-Trick
 Anheben und Absenken auf **derselben Frequenz** gleichzeitig: Die Anhebung wirkt tiefer und steiler, die Absenkung

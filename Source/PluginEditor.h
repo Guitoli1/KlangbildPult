@@ -4,6 +4,13 @@
 #include "PluginProcessor.h"
 #include "VintageUI.h"
 
+// Look im Stil eines 19-Zoll-Studiogeräts: blaugrauer Hammerschlaglack, weißer Siebdruck, schwarze Zeigerknöpfe
+class RackLookAndFeel : public VintageLookAndFeel
+{
+public:
+    void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider&) override;
+};
+
 class PultAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -21,12 +28,12 @@ private:
 
     Knob& addKnob (const juce::String& baseID, const juce::String& name, bool perSet, const juce::String& steps = {});
     void attachSet (int set);
-    void setupSwitch (juce::ToggleButton& b, const juce::String& paramID, const juce::String& onText, const juce::String& offText, juce::Colour lamp);
+    void setupToggle (juce::ToggleButton& b, const juce::String& onText, const juce::String& offText, juce::Colour lamp);
+    void setCurveVisible (bool);
     void timerCallback() override;
-    void renderTextures();
-    void drawEngraved (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Font, juce::Justification);
+    void renderPanel();
 
-    // Messprotokoll: Frequenzgang der Einstellungen
+    // Messprotokoll: Frequenzgang der Einstellungen (ausklappbar)
     struct Curve : public juce::Component
     {
         Curve (VintageLookAndFeel& l, PultAudioProcessor& p) : lnf (l), proc (p) {}
@@ -36,22 +43,21 @@ private:
     };
 
     PultAudioProcessor& proc;
-    VintageLookAndFeel lnf;
+    RackLookAndFeel lnf;
 
     std::vector<std::unique_ptr<Knob>> knobs;
-    juce::ToggleButton onSwitch, modeSwitch;
-    std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachment;
-    juce::TextButton midButton, sideButton;
+    juce::ToggleButton onSwitch, modeSwitch, editSwitch, curveSwitch;
+    std::unique_ptr<ButtonAttachment> onAttachment;
     juce::ComboBox presetBox;
     Curve curve { lnf, proc };
     int editSet = 0;
-    bool shownMs = false;
+    bool shownMs = false, curveVisible = false;
 
-    juce::Rectangle<int> faceplate, presetArea, curveBezel, tagArea, dividerArea;
-    juce::Rectangle<int> groupLow, groupHigh, groupAtten, groupOut;
-    std::array<juce::Rectangle<int>, 3> switchLabels;
-    juce::Image tolexImage, faceplateImage;
+    static constexpr int rackW = 1280, rackH = 460, curveH = 210;
+    juce::Rectangle<int> panel, nameplate, tagArea, curveBezel;
+    std::array<juce::Rectangle<int>, 4> sections;
+    std::array<juce::Rectangle<int>, 4> toggleLabels;
+    juce::Image panelImage, tolexImage;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PultAudioProcessorEditor)
 };
