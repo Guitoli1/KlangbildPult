@@ -126,6 +126,8 @@ PultAudioProcessorEditor::PultAudioProcessorEditor (PultAudioProcessor& p)
 
     curve.setInterceptsMouseClicks (false, false);
     addChildComponent (curve);
+    tubes.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (tubes);
 
     setSize (rackW, rackH + (curveVisible ? curveH : 0));
     curve.setVisible (curveVisible);
@@ -194,6 +196,24 @@ void PultAudioProcessorEditor::setCurveVisible (bool v)
 
 void PultAudioProcessorEditor::timerCallback()
 {
+    // Röhren: Heizfaden glüht immer, mit Röhren-Regler und Signal etwas heller, leises Flackern
+    {
+        const float tubeAmt = proc.apvts.getRawParameterValue ("tube")->load() * 0.01f;
+        const bool on = proc.apvts.getRawParameterValue ("on")->load() > 0.5f;
+        const float lvl = juce::jlimit (0.0f, 1.0f, proc.vuOut.load() * 2.5f);
+        smoothedLevel += (lvl - smoothedLevel) * (lvl > smoothedLevel ? 0.35f : 0.08f);
+        bool changed = false;
+        for (size_t i = 0; i < 2; ++i)
+        {
+            float target = 0.55f + 0.25f * tubeAmt + (on ? 0.22f : 0.0f) * smoothedLevel;
+            target *= 0.97f + 0.05f * flicker.nextFloat();
+            const float gv = tubes.glow[i] + (target - tubes.glow[i]) * 0.3f;
+            changed |= std::abs (gv - tubes.glow[i]) > 0.002f;
+            tubes.glow[i] = gv;
+        }
+        if (changed) tubes.repaint();
+    }
+
     const bool ms = proc.isMidSide();
     modeSwitch.setToggleState (ms, juce::dontSendNotification);
     if (ms != shownMs)
@@ -338,8 +358,8 @@ void PultAudioProcessorEditor::renderPanel()
     }
 
     // Abschnitte im Siebdruck
-    const juce::String titles[] = { "TIEFEN", u8 ("H\xc3\x96HEN"), u8 ("H\xc3\x96HEN-ABSENKUNG"), u8 ("R\xc3\x96HRENSTUFE") };
-    for (size_t i = 0; i < 4; ++i)
+    const juce::String titles[] = { "TIEFEN", u8 ("H\xc3\x96HEN"), u8 ("H\xc3\x96HEN-ABSENKUNG"), u8 ("R\xc3\x96HRENSTUFE"), u8 ("R\xc3\x96HREN") };
+    for (size_t i = 0; i < 5; ++i)
     {
         const auto r = sections[i].toFloat();
         g.setColour (silkDim);
@@ -361,6 +381,28 @@ void PultAudioProcessorEditor::renderPanel()
         g.setColour (silk);
         g.setFont (lnf.labelFont (13.0f, 0.18f));
         g.drawText (k->name, juce::Rectangle<float> (sb.getX() - 30.0f, sb.getBottom() - 6.0f, sb.getWidth() + 60.0f, 18.0f), juce::Justification::centred);
+    }
+
+    // Röhren-Sichtfenster: Rahmen mit Schrauben und Typen-Gravur
+    {
+        const auto tb = tubeBezel.toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (tb.translated (1.5f, 2.5f), 6.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffb9bec3), 0, tb.getY(), juce::Colour (0xff5d6267), 0, tb.getBottom(), false));
+        g.fillRoundedRectangle (tb, 6.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.35f));
+        g.drawRoundedRectangle (tb.reduced (0.5f), 6.0f, 1.0f);
+        for (auto pt : { tb.getTopLeft().translated (6.5f, 6.5f), tb.getTopRight().translated (-6.5f, 6.5f),
+                         tb.getBottomLeft().translated (6.5f, -6.5f), tb.getBottomRight().translated (-6.5f, -6.5f) })
+            VintageLookAndFeel::drawScrew (g, pt, 3.5f, pt.x * 0.01f + pt.y * 0.02f);
+        const auto tw = tubes.getBounds().toFloat();
+        g.setColour (silk);
+        g.setFont (lnf.labelFont (11.0f, 0.2f));
+        g.drawText ("12AX7", juce::Rectangle<float> (tw.getX() - 6.0f, tb.getBottom() + 6.0f, tw.getWidth() * 0.5f + 6.0f, 14.0f), juce::Justification::centred);
+        g.drawText ("12AU7", juce::Rectangle<float> (tw.getCentreX(), tb.getBottom() + 6.0f, tw.getWidth() * 0.5f + 6.0f, 14.0f), juce::Justification::centred);
+        g.setColour (silkDim);
+        g.setFont (lnf.labelFont (9.5f, 0.2f));
+        g.drawText (u8 ("VORSTUFE \xc2\xb7 TREIBER"), juce::Rectangle<float> (tb.getX() - 10.0f, tb.getBottom() + 24.0f, tb.getWidth() + 20.0f, 12.0f), juce::Justification::centred);
     }
 
     // Typenschild
@@ -430,6 +472,9 @@ void PultAudioProcessorEditor::resized()
     sections[1] = { 398, top, 310, bottom - top };
     sections[2] = { 720, top, 150, bottom - top };
     sections[3] = { 882, top, 150, bottom - top };
+    sections[4] = { 1044, top, 150, bottom - top };
+    tubeBezel = sections[4].reduced (12).withTrimmedTop (14).withTrimmedBottom (46);
+    tubes.setBounds (tubeBezel.reduced (12));
 
     const int topKnob = 150, botKnob = 140;
     auto placeTop = [&] (int idx, int cx) { knobs[(size_t) idx]->slider.setBounds (cx - topKnob / 2, top + 20, topKnob, topKnob); };
@@ -442,7 +487,7 @@ void PultAudioProcessorEditor::resized()
     placeTop (8, sections[3].getCentreX()); placeBot (9, sections[3].getCentreX());
 
     // rechte Spalte: Typenschild, Programm, Schalter
-    const int colX = 1046, colW = rackW - 56 - 14 - colX;
+    const int colX = 1206, colW = rackW - 56 - 14 - colX;
     nameplate = { colX, top - 8, colW, 88 };
     presetBox.setBounds (colX, top + 100, colW, 28);
     juce::ToggleButton* tg[] = { &onSwitch, &modeSwitch, &editSwitch, &curveSwitch };
@@ -469,4 +514,167 @@ void PultAudioProcessorEditor::resized()
             }
     }
     renderPanel();
+}
+
+//==============================================================================
+void PultAudioProcessorEditor::TubeWindow::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+
+    // dunkler Innenraum hinter dem Fenster
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1714), 0, b.getY(), juce::Colour (0xff070606), 0, b.getBottom(), false));
+    g.fillRoundedRectangle (b, 3.0f);
+
+    // Chassis-Blech, auf dem die Fassungen sitzen
+    const float deckY = b.getY() + b.getHeight() * 0.86f;
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff4a4c50), 0, deckY, juce::Colour (0xff1d1e20), 0, b.getBottom(), false));
+    g.fillRect (b.withTop (deckY));
+
+    const float glassW = b.getWidth() * 0.36f;
+    const float glassBottom = deckY - glassW * 0.36f;
+    const float glassH = juce::jmin (glassW * 4.6f, glassBottom - b.getY() - 22.0f);
+    const float cx[] = { b.getX() + b.getWidth() * 0.27f, b.getX() + b.getWidth() * 0.73f };
+    // Gesamtschein im Innenraum
+    {
+        const float gm = 0.5f * (glow[0] + glow[1]);
+        const auto c = juce::Point<float> (b.getCentreX(), glassBottom - glassH * 0.4f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff7a1e).withAlpha (0.28f * gm), c.x, c.y,
+                                                 juce::Colour (0x00ff7a1e), c.x + b.getWidth() * 0.9f, c.y, true));
+        g.fillRect (b);
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+        const float gl = glow[(size_t) i];
+        // warmer Schein aufs Chassis
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff7a1e).withAlpha (0.45f * gl), cx[i], deckY,
+                                                 juce::Colour (0x00ff7a1e), cx[i] + glassW * 1.3f, deckY, true));
+        g.fillEllipse (cx[i] - glassW * 1.3f, deckY - glassW * 0.35f, glassW * 2.6f, glassW * 0.8f);
+        drawTube (g, { cx[i] - glassW * 0.5f, glassBottom - glassH, glassW, glassH }, gl, i == 0);
+    }
+
+    // Spiegelung auf der Fensterscheibe
+    juce::Path refl;
+    refl.startNewSubPath (b.getX(), b.getY() + b.getHeight() * 0.35f);
+    refl.lineTo (b.getX() + b.getWidth() * 0.55f, b.getY());
+    refl.lineTo (b.getX() + b.getWidth() * 0.8f, b.getY());
+    refl.lineTo (b.getX(), b.getY() + b.getHeight() * 0.62f);
+    refl.closeSubPath();
+    g.setColour (juce::Colours::white.withAlpha (0.045f));
+    g.fillPath (refl);
+
+    // Innenschatten der Fensterkante
+    g.setColour (juce::Colours::black.withAlpha (0.7f));
+    g.drawRoundedRectangle (b.reduced (0.5f), 3.0f, 2.0f);
+}
+
+void PultAudioProcessorEditor::TubeWindow::drawTube (juce::Graphics& g, juce::Rectangle<float> r, float gl, bool twinPlates)
+{
+    const juce::Colour hot (0xffff8a2a), core (0xffffe0a0);
+    const float w = r.getWidth();
+
+    // Glaskolben-Umriss: oben Kuppel, unten leicht gerundet
+    juce::Path glass;
+    glass.addRoundedRectangle (r.getX(), r.getY(), w, r.getHeight(), w * 0.5f, w * 0.5f, true, true, false, false);
+
+    // Hof hinter dem Glas
+    const auto plateC = juce::Point<float> (r.getCentreX(), r.getY() + r.getHeight() * 0.55f);
+    g.setGradientFill (juce::ColourGradient (hot.withAlpha (0.6f * gl), plateC.x, plateC.y,
+                                             hot.withAlpha (0.0f), plateC.x + w * 1.6f, plateC.y, true));
+    g.fillEllipse (juce::Rectangle<float> (w * 3.2f, r.getHeight() * 1.0f).withCentre (plateC));
+
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (glass);
+
+        // Getter-Spiegel oben in der Kuppel
+        const float getterH = r.getHeight() * 0.17f;
+        juce::ColourGradient gg (juce::Colour (0xffa6acb4), r.getX(), r.getY(), juce::Colour (0xff1e2024), r.getRight(), r.getY() + getterH, false);
+        gg.addColour (0.55, juce::Colour (0xff4a4e55));
+        g.setGradientFill (gg);
+        g.fillRect (r.withHeight (getterH));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::transparentBlack, 0, r.getY() + getterH * 0.5f,
+                                                 juce::Colours::black.withAlpha (0.0f), 0, r.getY() + getterH, false));
+
+        const float topMica = r.getY() + r.getHeight() * 0.25f, botMica = r.getY() + r.getHeight() * 0.86f;
+
+        // Stützstäbe
+        g.setColour (juce::Colour (0xff8d8f93).withAlpha (0.85f));
+        for (float fx : { 0.2f, 0.8f })
+            g.fillRect (r.getX() + w * fx - 0.6f, topMica - 4.0f, 1.2f, r.getBottom() - topMica + 4.0f);
+
+        // Anodenbleche: zwei Systeme übereinander
+        const float plateW = w * 0.58f, gap = r.getHeight() * 0.04f;
+        const float stackTop = topMica + r.getHeight() * 0.03f, stackBot = botMica - r.getHeight() * 0.03f;
+        const float unitH = (stackBot - stackTop - gap) * 0.5f;
+        const float plateX = r.getCentreX() - plateW * 0.5f;
+        auto drawPlate = [&] (float y, float h)
+        {
+            const juce::Rectangle<float> pr (plateX, y, plateW, h);
+            juce::ColourGradient cg (juce::Colour (0xff17181a), pr.getX(), 0, juce::Colour (0xff17181a), pr.getRight(), 0, false);
+            cg.addColour (0.45, juce::Colour (0xff4e5055));
+            g.setGradientFill (cg);
+            g.fillRect (pr);
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            for (float rx : { 0.2f, 0.5f, 0.8f })
+                g.fillRect (pr.getX() + pr.getWidth() * rx - 0.5f, pr.getY(), 1.0f, pr.getHeight());
+            g.setGradientFill (juce::ColourGradient (hot.withAlpha (0.42f * gl), pr.getCentreX(), pr.getBottom(),
+                                                     hot.withAlpha (0.12f * gl), pr.getCentreX(), pr.getY(), false));   // warmer Widerschein
+            g.fillRect (pr);
+            // Heizfaden schimmert durch die Schlitze an den Blechkanten
+            g.setColour (hot.withAlpha (0.55f * gl));
+            g.fillRect (pr.getX() - 1.5f, pr.getY() + 3.0f, 1.5f, pr.getHeight() - 6.0f);
+            g.fillRect (pr.getRight(), pr.getY() + 3.0f, 1.5f, pr.getHeight() - 6.0f);
+        };
+        const float shrink = twinPlates ? 1.0f : 0.85f;
+        drawPlate (stackTop + unitH * (1.0f - shrink), unitH * shrink);
+        drawPlate (stackTop + unitH + gap, unitH * shrink);
+
+        // glühender Heizfaden: in der Lücke und an den Enden der Bleche sichtbar
+        auto glowLine = [&] (float y, float len)
+        {
+            for (int k = 4; k >= 1; --k)
+            {
+                g.setColour (hot.withAlpha (juce::jmin (1.0f, 0.2f * gl * (float) (5 - k))));
+                g.fillEllipse (juce::Rectangle<float> (len + (float) k * 10.0f, 3.0f + (float) k * 6.0f).withCentre ({ r.getCentreX(), y }));
+            }
+            g.setColour (core.withAlpha (juce::jlimit (0.0f, 1.0f, 0.5f + 0.55f * gl)));
+            g.fillRoundedRectangle (juce::Rectangle<float> (len, 2.0f).withCentre ({ r.getCentreX(), y }), 1.0f);
+        };
+        glowLine (stackTop + unitH + gap * 0.5f, plateW * 0.45f);
+        glowLine (stackTop + unitH * (1.0f - shrink) - 2.5f, plateW * 0.25f);
+        glowLine (stackBot + 2.5f, plateW * 0.25f);
+
+        // Glimmerscheiben oben und unten
+        g.setColour (juce::Colour (0xffd8d4cc).withAlpha (0.55f));
+        for (float my : { topMica, botMica })
+            g.fillRoundedRectangle (juce::Rectangle<float> (w * 0.9f, 3.0f).withCentre ({ r.getCentreX(), my }), 1.5f);
+
+        // Glühen legt sich übers Ganze
+        g.setGradientFill (juce::ColourGradient (hot.withAlpha (0.22f * gl), plateC.x, plateC.y, hot.withAlpha (0.0f), plateC.x + w * 0.75f, plateC.y, true));
+        g.fillRect (r);
+
+        // Glas: Kanten heller, Mitte klar
+        juce::ColourGradient eg (juce::Colours::white.withAlpha (0.22f), r.getX(), 0, juce::Colours::white.withAlpha (0.16f), r.getRight(), 0, false);
+        eg.addColour (0.18, juce::Colours::white.withAlpha (0.02f));
+        eg.addColour (0.82, juce::Colours::white.withAlpha (0.02f));
+        g.setGradientFill (eg);
+        g.fillRect (r);
+    }
+
+    // Kontur, Glanzstreifen, Abschmelzspitze
+    g.setColour (juce::Colours::white.withAlpha (0.28f));
+    g.strokePath (glass, juce::PathStrokeType (1.0f));
+    g.setColour (juce::Colours::white.withAlpha (0.38f));
+    g.fillRoundedRectangle (r.getX() + w * 0.16f, r.getY() + w * 0.45f, w * 0.07f, r.getHeight() * 0.6f, w * 0.035f);
+    g.setColour (juce::Colours::white.withAlpha (0.45f));
+    g.fillRoundedRectangle (r.getCentreX() - 2.0f, r.getY() - 5.0f, 4.0f, 7.0f, 2.0f);
+
+    // Sockel aus Pressstoff
+    const juce::Rectangle<float> base (r.getX() - w * 0.04f, r.getBottom(), w * 1.08f, w * 0.36f);
+    juce::ColourGradient bg (juce::Colour (0xff121212), base.getX(), 0, juce::Colour (0xff101010), base.getRight(), 0, false);
+    bg.addColour (0.35, juce::Colour (0xff3a3a3a));
+    g.setGradientFill (bg);
+    g.fillRoundedRectangle (base, 2.5f);
+    g.setColour (hot.withAlpha (0.3f * gl));
+    g.drawHorizontalLine ((int) base.getY(), base.getX() + 2.0f, base.getRight() - 2.0f);
 }

@@ -42,6 +42,14 @@ private:
         void paint (juce::Graphics&) override;
     };
 
+    // Sichtfenster mit zwei glühenden Röhren (12AX7, 12AU7)
+    struct TubeWindow : public juce::Component
+    {
+        std::array<float, 2> glow { 0.6f, 0.6f };
+        void paint (juce::Graphics&) override;
+        void drawTube (juce::Graphics&, juce::Rectangle<float> glass, float glow, bool twinPlates);
+    };
+
     PultAudioProcessor& proc;
     RackLookAndFeel lnf;
 
@@ -50,12 +58,15 @@ private:
     std::unique_ptr<ButtonAttachment> onAttachment;
     juce::ComboBox presetBox;
     Curve curve { lnf, proc };
+    TubeWindow tubes;
+    juce::Random flicker;
+    float smoothedLevel = 0.0f;
     int editSet = 0;
     bool shownMs = false, curveVisible = false;
 
-    static constexpr int rackW = 1280, rackH = 460, curveH = 210;
-    juce::Rectangle<int> panel, nameplate, tagArea, curveBezel;
-    std::array<juce::Rectangle<int>, 4> sections;
+    static constexpr int rackW = 1440, rackH = 460, curveH = 210;
+    juce::Rectangle<int> panel, nameplate, tagArea, curveBezel, tubeBezel;
+    std::array<juce::Rectangle<int>, 5> sections;
     std::array<juce::Rectangle<int>, 4> toggleLabels;
     juce::Image panelImage, tolexImage;
 
