@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "ScaledEditor.h"
 
 namespace
 {
@@ -270,7 +271,7 @@ void PultAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
             rp->setValueNotifyingHost (rp->convertTo0to1 (rp->convertFrom0to1 (rp->getValue())));
 }
 
-juce::AudioProcessorEditor* PultAudioProcessor::createEditor() { return new PultAudioProcessorEditor (*this); }
+juce::AudioProcessorEditor* PultAudioProcessor::createEditor() { return new kb::ScaledEditor (*this, new PultAudioProcessorEditor (*this)); }
 
 #ifndef KB_EMBEDDED
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PultAudioProcessor(); }
